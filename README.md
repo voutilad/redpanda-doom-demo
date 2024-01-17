@@ -8,7 +8,33 @@ $ git submodule update --init --recursive
 ## Chocolate Doom Telemetry
 
 Firstly, you'll need to build _Chocolate Doom_ from source using the branch in
-the included git submodule.
+the included git submodule. It uses GNU autoconf and the MQTT-C + Websocket
+support I've added requires a form of [LibreSSL's](https://libretls.org)
+`libtls` library. For non-LibreSSL based systems, a wrapper for OpenSSL
+exists called [libretls](https://git.causal.agency/libretls/about/).
+
+You can install `libretls` on Debian-based distros using:
+
+```
+$ sudo apt install libtls
+```
+
+### Building Chocolate Doom
+
+As long as you have GNU `autoconf`, `automake`, and the dependencies (Python 3,
+SDL2, SDL2_mixer, SDL2_net, and SDL2_image) you should be able to use GCC or
+LLVM to build the project.
+
+I recommend disabling Kafka support in _Chocolate Doom_ at configuration time:
+
+```
+$ ./autogen.sh --without-librdkafka
+```
+
+> Note: While I wired in _librdkafka_ to Chocolate Doom in the past, we don't
+> need it for this demo.
+
+### Configuring Chocolate Doom
 
 You'll need to use `chocolate-doom-setup` to configure the telemetry mode and
 point it towards Zilla. You should use the following settings for now:
@@ -23,6 +49,14 @@ telemetry_ws_tls_enabled      0
 ```
 
 > Note: tls support is to be added.
+
+### Getting a WAD File
+
+The shareware Doom 1 wad is available publicly. Grab a copy.
+
+```
+https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad
+```
 
 ## Aklivity Zilla
 
