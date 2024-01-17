@@ -1,0 +1,160 @@
+---
+name: zilla-mqtt-redpanda-broker
+bindings:
+  north_tcp_server:
+    type: tcp
+    kind: server
+    telemetry:
+      metrics:
+        - stream.*
+    options:
+      host: 0.0.0.0
+      port:
+        - ${{env.ZILLA_PORT_HTTP}}
+        - ${{env.ZILLA_PORT_MQTT}}
+    routes:
+      - when:
+          - port: ${{env.ZILLA_PORT_HTTP}}
+        exit: north_http_server
+      - when:
+          - port: ${{env.ZILLA_PORT_MQTT}}
+        exit: north_mqtt_server
+
+  north_http_server:
+    type: http
+    kind: server
+    telemetry:
+      metrics:
+        - stream.*
+    routes:
+      - when:
+          - headers:
+              :authority: ${{env.ZILLA_HOST}}:${{env.ZILLA_PORT_HTTP}}
+              :scheme: http
+              upgrade: websocket
+        exit: north_ws_server
+  north_ws_server:
+    type: ws
+    kind: server
+    telemetry:
+      metrics:
+        - stream.*
+    routes:
+      - when:
+          - path: /redpanda
+        exit: north_mqtt_server
+      - when:
+          - path: /echo
+        exit: echo_server
+  echo_server:
+    type: echo
+    telemetry:
+      metrics:
+        - stream.*
+    kind: server
+
+  north_mqtt_server:
+    type: mqtt
+    kind: server
+    telemetry:
+      metrics:
+        - stream.*
+    exit: north_mqtt_redpanda_mapping
+    
+  north_mqtt_redpanda_mapping:
+    type: mqtt-kafka
+    kind: proxy
+    server: debian-gnu-linux:7183
+    telemetry:
+      metrics:
+        - stream.*
+    options:
+      topics:
+        sessions: mqtt-sessions
+        messages: mqtt-messages
+        retained: mqtt-retained
+    clients:
+      - doom/{identity}/#
+    routes:
+      - when:
+          - publish:
+              - topic: doom/+/data
+          - subscribe:
+              - topic: doom/+/data
+        with:
+          messages: doom
+        exit: north_redpanda_cache_client
+    exit: north_redpanda_cache_client
+
+  north_redpanda_cache_client:
+    type: kafka
+    kind: cache_client
+    telemetry:
+      metrics:
+        - stream.*
+    exit: south_redpanda_cache_server
+
+  south_redpanda_cache_server:
+    type: kafka
+    kind: cache_server
+    telemetry:
+      metrics:
+        - stream.*
+    options:
+      bootstrap:
+        - doom
+    exit: south_redpanda_client
+
+  south_redpanda_client:
+    type: kafka
+    kind: client
+    telemetry:
+      metrics:
+        - stream.*
+    options:
+      sasl:
+        mechanism: ${{env.REDPANDA_SASL_MECHANISM}}
+        username: ${{env.REDPANDA_SASL_USERNAME}}
+        password: ${{env.REDPANDA_SASL_PASSWORD}}
+    exit: south_tls_client
+
+  south_tls_client:
+    type: tls
+    kind: client
+    telemetry:
+      metrics:
+        - stream.*
+    options:
+      sni:
+        - ${{env.REDPANDA_HOST}}
+    exit: south_tcp_client
+
+  south_tcp_client:
+    type: tcp
+    kind: client
+    telemetry:
+      metrics:
+        - stream.*
+    options:
+      host: ${{env.REDPANDA_HOST}}
+      port: ${{env.REDPANDA_PORT}}
+    routes:
+      - when:
+          - cidr: 0.0.0.0/0
+
+telemetry:
+  metrics:
+    - stream.opens.sent
+    - stream.closes.sent
+    - stream.errors.sent
+    - stream.errors.received
+    - stream.closes.received
+    - stream.opens.received
+  exporters:
+    prometheus_metric_exporter:
+      type: prometheus
+      options:
+        endpoints:
+          - scheme: http
+            path: /metrics
+            port: ${{env.ZILLA_PORT_PROMETHEUS}}
